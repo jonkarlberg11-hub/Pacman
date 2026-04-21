@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="theme-color" content="#0F1116" />
+  <title>Pac-Man</title>
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+  <div id="app">
+    <!-- HUD -->
+    <div id="hud">
+      <div class="hud-left">
+        <div class="hud-label">SCORE</div>
+        <div class="hud-value" id="score">0</div>
+      </div>
+      <div class="hud-center">
+        <button id="pause-btn" class="icon-btn" aria-label="Paus">
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+            <rect x="5" y="4" width="4" height="12" rx="1" fill="currentColor"/>
+            <rect x="11" y="4" width="4" height="12" rx="1" fill="currentColor"/>
+          </svg>
+        </button>
+      </div>
+      <div class="hud-right">
+        <div class="hud-label">LEVEL</div>
+        <div class="hud-value gold" id="level">1</div>
+      </div>
+    </div>
+
+    <!-- Power-up timers -->
+    <div id="powerup-bar"></div>
+
+    <!-- Canvas -->
+    <div id="canvas-wrap">
+      <canvas id="game" width="380" height="420"></canvas>
+    </div>
+
+    <!-- Liv (längst ner) -->
+    <div id="lives-bar">
+      <span class="hud-label">LIVES</span>
+      <span id="lives-dots"></span>
+      <span class="highscore-display">HIGH <span id="highscore">0</span></span>
+    </div>
+
+    <!-- Startmeny -->
+    <div id="start-menu" class="overlay active">
+      <div class="menu-content">
+        <h1 class="title">PAC-MAN</h1>
+        <p class="subtitle">Svep för att styra · piltangenter på dator</p>
+        <div class="difficulty-picker">
+          <div class="section-label">Välj svårighet</div>
+          <button class="difficulty-btn" data-diff="easy">
+            <span class="diff-name">Lätt</span>
+            <span class="diff-desc">2 spöken · 3 liv · långa power-ups</span>
+          </button>
+          <button class="difficulty-btn selected" data-diff="medium">
+            <span class="diff-name">Medel</span>
+            <span class="diff-desc">4 spöken · klassisk fart · 3 liv</span>
+          </button>
+          <button class="difficulty-btn" data-diff="hard">
+            <span class="diff-name">Svår</span>
+            <span class="diff-desc">4 smarta spöken · snabbare · 2 liv</span>
+          </button>
+        </div>
+        <button id="start-btn" class="primary-btn">SPELA</button>
+        <div class="hint">Power-ups dyker upp när du äter prickar. Sveparea = hela skärmen.</div>
+      </div>
+    </div>
+
+    <!-- Pausmeny -->
+    <div id="pause-menu" class="overlay">
+      <div class="menu-content">
+        <h2 class="title-sm">Paus</h2>
+        <button id="resume-btn" class="primary-btn">FORTSÄTT</button>
+        <button id="restart-btn" class="secondary-btn">STARTA OM</button>
+        <button id="quit-btn" class="secondary-btn">HUVUDMENY</button>
+      </div>
+    </div>
+
+    <!-- Game Over -->
+    <div id="gameover-menu" class="overlay">
+      <div class="menu-content">
+        <h2 class="title-sm">Game Over</h2>
+        <div class="score-display">
+          <div class="hud-label">POÄNG</div>
+          <div class="big-score" id="final-score">0</div>
+        </div>
+        <button id="retry-btn" class="primary-btn">FÖRSÖK IGEN</button>
+        <button id="menu-btn" class="secondary-btn">HUVUDMENY</button>
+      </div>
+    </div>
+
+    <!-- Win -->
+    <div id="win-menu" class="overlay">
+      <div class="menu-content">
+        <h2 class="title-sm" id="win-title">Banan klar!</h2>
+        <div class="score-display">
+          <div class="hud-label">POÄNG</div>
+          <div class="big-score" id="win-score">0</div>
+        </div>
+        <button id="next-btn" class="primary-btn">NÄSTA BANA</button>
+        <button id="win-menu-btn" class="secondary-btn">HUVUDMENY</button>
+      </div>
+    </div>
+
+    <!-- Allt-klart -->
+    <div id="complete-menu" class="overlay">
+      <div class="menu-content">
+        <h2 class="title-sm">Alla banor klara! 🏆</h2>
+        <div class="score-display">
+          <div class="hud-label">SLUTPOÄNG</div>
+          <div class="big-score" id="complete-score">0</div>
+        </div>
+        <button id="complete-menu-btn" class="primary-btn">HUVUDMENY</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
