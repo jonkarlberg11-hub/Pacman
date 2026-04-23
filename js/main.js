@@ -2,6 +2,7 @@
 
 import { Game, STATE } from "./game.js";
 import { LABELS, COLORS } from "./powerup.js";
+import { SoundToggle } from "./audio.js";
 
 const $ = (sel) => document.querySelector(sel);
 
@@ -145,6 +146,33 @@ function tryEnterFullscreen() {
 
 // ========== Resize ==========
 window.addEventListener("orientationchange", () => setTimeout(() => game.resize(), 150));
+
+// ========== Ljud: init vid första user gesture + M-tangent + knapp ==========
+function initAudioOnce() {
+  SoundToggle.init();
+  window.removeEventListener("keydown", initAudioOnce);
+  window.removeEventListener("pointerdown", initAudioOnce);
+}
+window.addEventListener("keydown", initAudioOnce, { once: false });
+window.addEventListener("pointerdown", initAudioOnce, { once: false });
+
+function renderSoundIcon(on) {
+  $("#sound-btn").classList.toggle("muted", !on);
+}
+SoundToggle.onChange = renderSoundIcon;
+renderSoundIcon(SoundToggle.enabled);
+
+$("#sound-btn").addEventListener("click", (e) => {
+  e.stopPropagation();
+  SoundToggle.toggle();
+});
+
+window.addEventListener("keydown", (e) => {
+  if (e.key === "m" || e.key === "M") {
+    SoundToggle.toggle();
+    e.preventDefault();
+  }
+});
 
 // Visa startmenyn vid laddning
 showOverlay("start");

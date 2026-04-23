@@ -72,33 +72,60 @@ export class Pacman {
       this.pendingDir = inputDir;
     }
 
-    // Vid cell-centrum (sub=0): försök byta till pendingDir om möjligt
-    const atCenter = Math.abs(this.subX) < 0.01 && Math.abs(this.subY) < 0.01;
-    if (atCenter) {
-      if (this.canMoveInDir(this.pendingDir)) {
-        this.dir = this.pendingDir;
-      } else if (!this.canMoveInDir(this.dir)) {
-        this.dir = DIR.NONE; // stanna vid vägg
-      }
-    }
-
-    // 180° vändning mitt i cell tillåts (pacman snäpper)
-    if (!atCenter && this.pendingDir && dirOpposite(this.pendingDir, this.dir)) {
+    // 180° vändning tillåts direkt (pacman snäpper)
+    if ((this.pendingDir.dx !== 0 || this.pendingDir.dy !== 0) &&
+        dirOpposite(this.pendingDir, this.dir)) {
       this.dir = this.pendingDir;
       this.subX = -this.subX;
       this.subY = -this.subY;
     }
 
-    // Rörelse
-    if (this.dir.dx !== 0 || this.dir.dy !== 0) {
-      const speed = BASE_SPEED * this.speedMult;
-      const step = speed * dt;
-      this.subX += this.dir.dx * step;
-      this.subY += this.dir.dy * step;
+    // Bootstrap: om vi står stilla (dir=NONE) och en giltig riktning finns i
+    // pendingDir, adoptera den nu. Täcker spelstart och omstart efter väggstopp.
+    if (this.dir.dx === 0 && this.dir.dy === 0 && this.canMoveInDir(this.pendingDir)) {
+      this.dir = this.pendingDir;
+    }
 
-      // Har vi nått/passerat nästa cell?
-      if (Math.abs(this.subX) >= 0.5 || Math.abs(this.subY) >= 0.5) {
-        // Flytta cell
+    const speed = BASE_SPEED * this.speedMult;
+    let remaining = speed * dt;
+    let eaten = null;
+
+    // Flytta i segment — stanna vid varje beslutningspunkt (cellcentrum
+    // för riktningsbyte/väggstopp, cellgräns för cellbyte). Detta gör
+    // rörelsen dt-oberoende och förhindrar att man glider genom väggar.
+    while (remaining > 1e-9) {
+      if (this.dir.dx === 0 && this.dir.dy === 0) break;
+
+      const onX = this.dir.dx !== 0;
+      const sub = onX ? this.subX : this.subY;
+      const sign = onX ? this.dir.dx : this.dir.dy;
+
+      // Om sub har motsatt tecken mot rörelseriktningen är vi på väg mot
+      // centrum (sub=0). Annars siktar vi på cellgränsen (sub = 0.5 * sign).
+      const nextStop = (sub * sign < -1e-9) ? 0 : 0.5 * sign;
+      const dist = Math.abs(nextStop - sub);
+
+      if (remaining + 1e-9 < dist) {
+        if (onX) this.subX += sign * remaining;
+        else this.subY += sign * remaining;
+        remaining = 0;
+        break;
+      }
+
+      if (onX) this.subX = nextStop;
+      else this.subY = nextStop;
+      remaining -= dist;
+
+      if (nextStop === 0) {
+        // Vid cellcentrum — försök byta till pendingDir, annars stoppa vid vägg
+        if (this.canMoveInDir(this.pendingDir)) {
+          this.dir = this.pendingDir;
+        } else if (!this.canMoveInDir(this.dir)) {
+          this.dir = DIR.NONE;
+          break;
+        }
+      } else {
+        // Vid cellgräns — flytta till nästa cell
         const newCol = this.col + this.dir.dx;
         const newRow = this.row + this.dir.dy;
         const wrapped = this.maze.wrap(newCol, newRow);
@@ -107,14 +134,12 @@ export class Pacman {
         this.subX -= this.dir.dx;
         this.subY -= this.dir.dy;
 
-        // Konsumera prick/pellet på denna cell
-        const eaten = this.maze.consumeAt(this.col, this.row);
-
-        // Tunnel-portal ljudlös wrap
-        return eaten; // "dot" | "pellet" | null
+        const got = this.maze.consumeAt(this.col, this.row);
+        if (got) eaten = got;
       }
     }
-    return null;
+
+    return eaten;
   }
 
   // Används vid dödsfall — enkel animation kan läggas till senare

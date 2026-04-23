@@ -73,6 +73,16 @@ export class Maze {
     // Bestäm ghost home center (används för eaten-mode)
     this.ghostHouseCenter = this._computeCenter(this.ghostHomeTiles.length ? this.ghostHomeTiles : this.ghostSpawns);
 
+    // Exit-cell: rakt ovanför mittendörren — mål för spöken som lämnar huset
+    if (this.doorTiles.length > 0) {
+      const cols = this.doorTiles.map((t) => t.col).sort((a, b) => a - b);
+      const midCol = cols[Math.floor(cols.length / 2)];
+      const doorRow = this.doorTiles[0].row;
+      this.ghostExit = { col: midCol, row: doorRow - 1 };
+    } else {
+      this.ghostExit = this.ghostHouseCenter;
+    }
+
     // Tunnlar kopplas i par (vänster–höger). Antag exakt 2 eller 0.
     if (this.tunnelTiles.length === 2) {
       this.tunnelPair = [this.tunnelTiles[0], this.tunnelTiles[1]];

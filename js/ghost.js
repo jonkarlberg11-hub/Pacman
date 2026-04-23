@@ -153,6 +153,58 @@ export class Ghost {
     return { dx: -this.dir.dx, dy: -this.dir.dy };
   }
 
+  // Starta LEAVING-sekvensen — snap till cellcentrum och välj första riktning.
+  // Om spöket redan står på exit-cellen (Blinky) hoppar vi direkt till chase/
+  // scatter och låter _pickDirection välja en giltig riktning, så han inte
+  // vandrar in i väggen ovanför dörren.
+  _beginLeaving() {
+    this.subX = 0;
+    this.subY = 0;
+    const exit = this.maze.ghostExit;
+    if (exit && this.col === exit.col && this.row === exit.row) {
+      this.state = this.globalState || GHOST_STATE.SCATTER;
+      this.dir = this._pickDirection();
+      return;
+    }
+    this.state = GHOST_STATE.LEAVING;
+    this.dir = this._leavingDirection();
+  }
+
+  // Dedikerad exit-rutt: först justera kolumn mot dörrens mitt, sen rakt upp.
+  _leavingDirection() {
+    const exit = this.maze.ghostExit;
+    if (!exit) return DIR.UP;
+    if (this.row > exit.row) {
+      if (this.col < exit.col) return DIR.RIGHT;
+      if (this.col > exit.col) return DIR.LEFT;
+      return DIR.UP;
+    }
+    return DIR.UP;
+  }
+
+  // State-medveten riktningsväljare. Körs vid cellcentrum (subX=subY=0).
+  _chooseDirection() {
+    if (this.state === GHOST_STATE.LEAVING) {
+      const exit = this.maze.ghostExit;
+      const atExit = exit && this.col === exit.col && this.row === exit.row;
+      const cell = this.maze.cellAt(this.col, this.row);
+      if (atExit || (cell !== C.GHOST_HOME && cell !== C.DOOR)) {
+        this.state = this.globalState || GHOST_STATE.SCATTER;
+        return this._pickDirection();
+      }
+      return this._leavingDirection();
+    }
+    if (this.state === GHOST_STATE.EATEN) {
+      const center = this.maze.ghostHouseCenter;
+      if (this.col === center.col && this.row === center.row) {
+        this.state = GHOST_STATE.LEAVING;
+        return DIR.UP;
+      }
+      return this._pickDirection();
+    }
+    return this._pickDirection();
+  }
+
   setFrightened(seconds) {
     if (this.state === GHOST_STATE.EATEN || this.state === GHOST_STATE.IN_HOUSE) return;
     this.state = GHOST_STATE.FRIGHTENED;
@@ -174,17 +226,14 @@ export class Ghost {
   update(dt, globalState) {
     this.globalState = globalState;
 
-    // IN_HOUSE timer
     if (this.state === GHOST_STATE.IN_HOUSE) {
       this.releaseTimer -= dt;
       if (this.releaseTimer <= 0) {
-        this.state = GHOST_STATE.LEAVING;
-        this.dir = DIR.UP;
+        this._beginLeaving();
       }
       return;
     }
 
-    // Timers
     if (this.state === GHOST_STATE.FRIGHTENED) {
       this.frightTimer -= dt;
       if (this.frightTimer <= 0) {
@@ -196,50 +245,52 @@ export class Ghost {
       if (this.freezeTimer <= 0) {
         this.state = this.globalState;
       } else {
-        return; // frys = ingen rörelse
+        return;
       }
     }
 
-    // Hastighet per state
     let speed = BASE_SPEED * this.speedMult;
     if (this.state === GHOST_STATE.FRIGHTENED) speed *= 0.55;
     if (this.state === GHOST_STATE.EATEN) speed *= 2.0;
     if (this.state === GHOST_STATE.LEAVING) speed *= 0.8;
 
-    // Rör framåt
-    const step = speed * dt;
-    this.subX += this.dir.dx * step;
-    this.subY += this.dir.dy * step;
+    let remaining = speed * dt;
 
-    if (Math.abs(this.subX) >= 0.5 || Math.abs(this.subY) >= 0.5) {
-      // Byt cell
-      const newCol = this.col + this.dir.dx;
-      const newRow = this.row + this.dir.dy;
-      const wrapped = this.maze.wrap(newCol, newRow);
-      this.col = wrapped.col;
-      this.row = wrapped.row;
-      this.subX -= this.dir.dx;
-      this.subY -= this.dir.dy;
+    // Segment-stepping — snap till cellcentrum och cellgräns, så riktnings-
+    // beslut alltid sker vid sub=0 (annars driftar perpendikulär sub-axel).
+    while (remaining > 1e-9) {
+      if (this.dir.dx === 0 && this.dir.dy === 0) break;
 
-      // Vid ny cell: välj ny riktning
-      if (this.state === GHOST_STATE.LEAVING) {
-        // Gå tills vi är ovanför dörren och utanför huset
-        if (this.maze.cellAt(this.col, this.row) !== C.GHOST_HOME &&
-            this.maze.cellAt(this.col, this.row) !== C.DOOR) {
-          this.state = this.globalState || GHOST_STATE.SCATTER;
-        }
-        this.dir = this._pickDirection();
-      } else if (this.state === GHOST_STATE.EATEN) {
-        // När vi är hemma: återfödas
-        const center = this.maze.ghostHouseCenter;
-        if (this.col === center.col && this.row === center.row) {
-          this.state = GHOST_STATE.LEAVING;
-          this.dir = DIR.UP;
-        } else {
-          this.dir = this._pickDirection();
-        }
+      const onX = this.dir.dx !== 0;
+      const sub = onX ? this.subX : this.subY;
+      const sign = onX ? this.dir.dx : this.dir.dy;
+
+      const nextStop = (sub * sign < -1e-9) ? 0 : 0.5 * sign;
+      const dist = Math.abs(nextStop - sub);
+
+      if (remaining + 1e-9 < dist) {
+        if (onX) this.subX += sign * remaining;
+        else this.subY += sign * remaining;
+        remaining = 0;
+        break;
+      }
+
+      if (onX) this.subX = nextStop;
+      else this.subY = nextStop;
+      remaining -= dist;
+
+      if (nextStop === 0) {
+        // Vid cellcentrum — AI-beslut, subX och subY är nu exakt 0
+        this.dir = this._chooseDirection();
       } else {
-        this.dir = this._pickDirection();
+        // Vid cellgräns — flytta till nästa cell, behåll dir
+        const newCol = this.col + this.dir.dx;
+        const newRow = this.row + this.dir.dy;
+        const wrapped = this.maze.wrap(newCol, newRow);
+        this.col = wrapped.col;
+        this.row = wrapped.row;
+        this.subX -= this.dir.dx;
+        this.subY -= this.dir.dy;
       }
     }
   }
@@ -248,13 +299,11 @@ export class Ghost {
     const { x, y } = this.pxCenter();
     const r = TILE * 0.4;
 
-    // EATEN = bara ögon
     if (this.state === GHOST_STATE.EATEN) {
       this._drawEyes(ctx, x, y, r);
       return;
     }
 
-    // Välj färg baserat på state
     let body = this.color;
     if (this.state === GHOST_STATE.FRIGHTENED) {
       const blink = this.frightTimer < 2 && Math.floor(this.frightTimer * 4) % 2 === 0;
@@ -264,28 +313,23 @@ export class Ghost {
       body = "#A8E6FF";
     }
 
-    // Kropp: rundad topp + våg-botten
-    const wobble = (Math.sin(time / 120) + 1) / 2; // 0..1
+    // Klassisk spökkropp: halvcirkel topp + 3 tänder i botten.
+    // Path går höger-till-vänster genom botten — inga korsande segment.
+    // Bounding box (x±r, y±r) är identisk med Pac-Mans cirkel.
     ctx.fillStyle = body;
     ctx.beginPath();
-    ctx.arc(x, y - r * 0.2, r, Math.PI, 0, false);
-    ctx.lineTo(x + r, y + r * 0.7);
-    // Våg längs botten
-    const n = 4;
-    for (let i = n - 1; i >= 0; i--) {
-      const bx = x + r - (i * 2 + 1) * (r / n);
-      const dy = (i % 2 === 0) ? (r * 0.15 * (1 - wobble)) : (r * 0.35);
-      ctx.lineTo(bx, y + r * 0.7 + (i % 2 === 0 ? -r * 0.12 : 0));
-    }
-    ctx.lineTo(x - r, y + r * 0.7);
+    ctx.arc(x, y, r, Math.PI, 0, false);
+    ctx.lineTo(x + r,       y + r);
+    ctx.lineTo(x + r * 0.5, y + r * 0.7);
+    ctx.lineTo(x,           y + r);
+    ctx.lineTo(x - r * 0.5, y + r * 0.7);
+    ctx.lineTo(x - r,       y + r);
     ctx.closePath();
     ctx.fill();
 
-    // Ögon — inte i frightened mode
     if (this.state !== GHOST_STATE.FRIGHTENED && this.state !== GHOST_STATE.FROZEN) {
       this._drawEyes(ctx, x, y, r);
     } else {
-      // Rädd/fryst mun
       ctx.strokeStyle = "#FFFFFF";
       ctx.lineWidth = 1.5;
       ctx.beginPath();
@@ -295,7 +339,6 @@ export class Ghost {
       ctx.lineTo(x + r * 0.25, y - r * 0.25);
       ctx.lineTo(x + r * 0.5, y - r * 0.1);
       ctx.stroke();
-      // Ögon som prickar
       ctx.fillStyle = "#FFFFFF";
       ctx.beginPath();
       ctx.arc(x - r * 0.35, y - r * 0.4, 1.5, 0, Math.PI * 2);

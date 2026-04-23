@@ -5,7 +5,7 @@ import { Pacman } from "./pacman.js";
 import { Ghost, GHOST_STATE, createGhostPack } from "./ghost.js";
 import { PowerupManager, PU, LABELS, COLORS } from "./powerup.js";
 import { InputHandler, DIR, dirEqual } from "./input.js";
-import { Haptic } from "./audio.js";
+import { Haptic, Sfx } from "./audio.js";
 
 // Svårighetsparametrar
 const DIFFICULTIES = {
@@ -62,6 +62,7 @@ export class Game {
 
     this.dyingTimer = 0;
     this.startDelay = 0;
+    this._frightActive = false; // för frightened-ljudloopen
 
     this.timeAcc = 0;
     this.lastFrame = 0;
@@ -133,6 +134,9 @@ export class Game {
     this.ghostEatChain = 0;
     this.startDelay = 1.2; // kort paus så spelaren hinner se banan
     this.input.clear();
+    Sfx.frightenedStop();
+    this._frightActive = false;
+    Sfx.intro();
     this._fireHud();
     if (this.onPowerupsChange) this.onPowerupsChange([]);
   }
@@ -185,10 +189,12 @@ export class Game {
     if (eaten === "dot") {
       this._addScore(10);
       Haptic.dot();
+      Sfx.dot();
       this.powerups.onDotEaten();
     } else if (eaten === "pellet") {
       this._addScore(50);
       Haptic.pellet();
+      Sfx.pellet();
       const fright = DIFFICULTIES[this.difficulty].frightTime;
       this.ghosts.forEach((g) => g.setFrightened(fright));
       this.ghostEatChain = 0;
@@ -212,6 +218,14 @@ export class Game {
     // Spöken
     for (const g of this.ghosts) {
       g.update(dt, this.globalGhostState);
+    }
+
+    // Frightened-ljudloop: auto-start/stop baserat på om något spöke är rädd
+    const anyFright = this.ghosts.some((g) => g.state === GHOST_STATE.FRIGHTENED);
+    if (anyFright !== this._frightActive) {
+      this._frightActive = anyFright;
+      if (anyFright) Sfx.frightenedStart();
+      else Sfx.frightenedStop();
     }
 
     // Kollisioner Pac-Man ↔ spöken
@@ -269,6 +283,7 @@ export class Game {
 
   _applyPowerup(type) {
     Haptic.powerup();
+    Sfx.powerup();
     if (type === PU.CHERRY) {
       this._addScore(100 + this.levelIdx * 200);
       return;
@@ -301,6 +316,7 @@ export class Game {
           const base = 200 * Math.pow(2, this.ghostEatChain - 1); // 200, 400, 800, 1600
           this._addScore(base);
           Haptic.eatGhost();
+          Sfx.eatGhost();
         } else if (this.pacman.shielded) {
           // Sköld räddar men förbrukas inte — vara tills timer går ut
           // Spöket studsar ej, men spelaren tar ingen skada
@@ -315,6 +331,9 @@ export class Game {
   _die() {
     this.lives--;
     Haptic.death();
+    Sfx.frightenedStop();
+    this._frightActive = false;
+    Sfx.death();
     this._fireHud();
     this.state = STATE.DYING;
     this.dyingTimer = 1.2;
@@ -342,6 +361,9 @@ export class Game {
 
   _winLevel() {
     Haptic.win();
+    Sfx.frightenedStop();
+    this._frightActive = false;
+    Sfx.win();
     const nextIdx = this.levelIdx + 1;
     const totalMazes = MAZE_LIST[this.difficulty].length;
     if (nextIdx >= totalMazes) {
@@ -364,6 +386,8 @@ export class Game {
 
   _gameOver() {
     this.state = STATE.GAMEOVER;
+    Sfx.frightenedStop();
+    this._frightActive = false;
     this._saveHighscore();
     if (this.onGameOver) this.onGameOver(this.score);
   }
@@ -400,9 +424,11 @@ export class Game {
     if (this.state === STATE.PLAYING) {
       this.state = STATE.PAUSED;
       Haptic.pause();
+      if (this._frightActive) Sfx.frightenedStop();
     } else if (this.state === STATE.PAUSED) {
       this.state = STATE.PLAYING;
       Haptic.pause();
+      if (this._frightActive) Sfx.frightenedStart();
     }
   }
 
